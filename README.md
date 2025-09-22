@@ -20,7 +20,7 @@ A Python tool to extract and translate Taobao purchase data from HTML files into
 
 1. Clone this repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/Darius-San/TAOBAO_EXTRACTOR
 cd taobao-extractor
 ```
 
