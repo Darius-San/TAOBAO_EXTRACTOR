@@ -18,133 +18,108 @@ A Python tool to extract and translate Taobao purchase data from HTML files into
 
 ## Installation
 
-1. Clone this repository:
-```bash
-git clone https://github.com/Darius-San/TAOBAO_EXTRACTOR
-cd taobao-extractor
+## TAOBAO_EXTRACTOR — Minimaler Workflow (Deutsch)
+
+Dieses Repository ist auf ein kleines, praktisches Werkzeug reduziert:
+
+- `scripts/taobao_export_json.user.js` — Tampermonkey Userscript: exportiert Bestellungen von der Taobao-Bestellseite (verwendet eingebettetes JSON).
+- `data/input.html` — Beispiel / gespeicherte Taobao-Bestellseite (enthält das eingebettete JSON).
+- `input_csv/` — Ordner, in den Du die vom Userscript erzeugten CSV-Dateien legst.
+- `final_output/` — Ordner für die finalen, ins Englische übersetzten CSV-Dateien.
+- `tools/` — kleine Python-Skripte zum Übersetzen / Finalisieren (progress-enabled).
+
+Ziel: einfacher Ablauf — Seite exportieren → CSV in `input_csv/` legen → übersetzen → finales CSV in `final_output/`.
+
+## Schnellstart (PowerShell)
+
+Voraussetzungen:
+- Windows mit installiertem Python 3.8+ (empfohlen 3.11+)
+- (Optional) virtuelles Environment für Python
+- Für automatische Übersetzung: `googletrans==4.0.0-rc1` (oder eine andere Übersetzungs-API Deiner Wahl)
+
+Beispielschritte (PowerShell):
+
+1) (Optional) Virtuelle Umgebung anlegen und aktivieren
+
+```powershell
+# im Repo-Root
+python -m venv .venv
+# PowerShell: eventuell ExecutionPolicy erlauben, dann aktivieren
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; .\.venv\Scripts\Activate.ps1
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+2) Abhängigkeit (googletrans) installieren
+
+```powershell
+pip install googletrans==4.0.0-rc1
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
+3) CSV exportieren mit Tampermonkey
+
+- Tampermonkey installieren (Browser-Erweiterung).
+- Neu-Skript anlegen und den Inhalt von `scripts/taobao_export_json.user.js` einfügen.
+- Hinweis zu lokalen HTML-Dateien: Das Userscript ist standardmäßig auf `https://buyertrade.taobao.com/*` gesetzt. Wenn Du `data/input.html` lokal öffnest, musst Du entweder
+	- das `@match` in der Script-Header-Zeile temporär anpassen (z. B. `@match file:///*`), oder
+	- in Tampermonkey eine `Include`-Regel hinzufügen, die lokale Dateien erlaubt.
+- Öffne die Bestellseite (oder `data/input.html`) im Browser, klicke die neu eingeblendete Schaltfläche „导出 (JSON)“ — die CSV-Datei wird heruntergeladen.
+
+4) Exportierte CSV in `input_csv/` ablegen
+
+Kopiere oder verschiebe die Datei, z. B. `input_csv\\taobao_orders.csv`.
+
+5) Automatische Übersetzung (alle chinesischen Zellen)
+
+```powershell
+python tools/translate_all_progress.py -i "input_csv\\taobao_orders.csv" -o "final_output\\taobao_orders_no_chinese.csv" --write-interval 10
 ```
 
-## Usage
+Erläuterung:
+- `--write-interval 10` schreibt alle 10 Zeilen eine Zwischenversion, so dass Du Fortschritt siehst und das Skript im Notfall fortsetzen kannst.
+- Falls `googletrans` in Deiner (virtuellen) Umgebung Probleme macht, kannst Du das Skript mit einem globalen Python laufen lassen, in dem `googletrans` bereits installiert ist.
 
-### 1. Prepare your HTML file
+6) Finalisieren (Spalten umbenennen / chinesische Spalten ersetzen)
 
-- Save your Taobao purchase history page as HTML
-- Place the HTML file at: `data/input.html`
-- The file should contain the complete HTML source with JSON data
-
-### 2. Run the extraction
-
-```bash
-python extract_taobao.py
+```powershell
+python tools/finalize_translated_csv.py -i "final_output\\taobao_orders_no_chinese.csv" -o "final_output\\taobao_orders_final.csv"
 ```
 
-### 3. Check the output
+Dieses Skript kopiert die `_en`-Spalten (sofern vorhanden) über die Originalspalten und schreibt eine finale, auf Englisch benannte CSV-Datei.
 
-The script will generate:
-- `output/taobao_products_english.csv` - CSV file for Excel/spreadsheet use
-- `output/taobao_products_english.md` - Markdown table for documentation
+## Felder / Format
 
-## Output Format
+Die vom Userscript erzeugte CSV hat (aktuell) die Spalten:
 
-The extracted data includes these columns:
+- `订单号` (order id)
+- `商品名称` (title; ggf. mehrere Artikel durch `||` getrennt)
+- `商品链接` (erste Artikel-URL)
+- `单价` (unit price; evtl. leer)
+- `数量` (quantity)
+- `实付款` (paid)
+- `状态` (status)
+- `快递单号` (tracking number; evtl. leer)
 
-| Column | Description |
-|--------|-------------|
-| Beschreibung | English product name |
-| Artikelnummer | Order/Article ID |
-| Kaufdatum | Purchase date (YYYY-MM-DD) |
-| Color classification | Product specifications in English |
-| Verkäufer | English seller/store name |
-| Einzelpreis | Unit price in Yuan (¥) |
-| Stückzahl | Quantity ordered |
-| Gesamtpreis | Total price in Yuan (¥) |
+Nach der Übersetzung / Finalisierung werden die Spalten in der finalen CSV auf Englisch benannt (z. B. `order_id`, `title`, `item_url`, `unit_price`, `quantity`, `paid`, `status`, `tracking_number`).
 
-## Project Structure
+## Hinweise & Troubleshooting
 
-```
-taobao-extractor/
-├── extract_taobao.py          # Main extraction script
-├── requirements.txt           # Python dependencies
-├── data/
-│   └── input.html            # Your Taobao HTML file (place here)
-├── output/
-│   ├── taobao_products_english.csv  # Generated CSV output
-│   ├── taobao_products_english.md   # Generated Markdown output
-│   └── example_output.csv     # Example output file
-└── extract_html/             # Virtual environment (optional)
-```
+- Lokale HTML-Datei: Browser-Sicherheitsregeln können das Laden lokaler Dateien einschränken. Wenn das Userscript nicht ausgelöst wird, prüfe die `@match`/`@include`-Regeln in Tampermonkey.
+- `googletrans` ist ein inoffizieller Client; bei vielen oder sehr langen Texten können Übersetzungsfehler auftreten. In diesem Fall:
+	- Das Skript versucht mehrfach, fehlgeschlagene Übersetzungen erneut.
+	- Fehlschläge werden protokolliert; die Originaltexte bleiben erhalten und können manuell geprüft werden.
+- Wenn Du eine produktive/skalierbare Lösung benötigst, empfehle ich eine offizielle API (Google Cloud Translate, DeepL, etc.) — die Skripte können angepasst werden.
 
-## File Requirements
+## Was im Repo enthalten ist
 
-### Input File: `data/input.html`
-- Complete Taobao purchase history HTML page
-- Must contain embedded JSON data with product information
-- Typically saved from: Taobao → My Orders → Purchase History
+- `scripts/taobao_export_json.user.js` — Tampermonkey exporter
+- `data/input.html` — Beispiel / gespeicherte Bestellseite
+- `input_csv/` — Platz für rohe Exporte
+- `final_output/` — Endergebnisse nach Übersetzung
+- `tools/translate_all_progress.py` — Übersetzt alle chinesischen Zellen mit Fortschritt/Interims-Speicher
+- `tools/finalize_translated_csv.py` — Finalisiert und benennt Spalten um
 
-### Expected HTML Structure
-The script looks for JSON data in this pattern:
-```javascript
-var data = JSON.parse('{"mainOrders":[...]}');
-```
+## Nächste Schritte (optional)
 
-## Translation Features
+- Soll ich die Änderungen direkt commiten und pushen? Sag kurz Bescheid, dann führe ich `git add`/`git commit` für Dich aus.
 
-The script includes comprehensive translation dictionaries:
-
-- **47+ Product Names**: Chinese → English product translations
-- **59+ Color Classifications**: Technical specifications and color names  
-- **25+ Seller Names**: Intelligent seller mapping based on product categories
-- **Smart Date Assignment**: Purchase dates based on order ID patterns
-
-## Example Output
-
-```csv
-Beschreibung,Artikelnummer,Kaufdatum,Color classification,Verkäufer,Einzelpreis,Stückzahl,Gesamtpreis
-SATA Tools Genuine Metric Hex Key Set,4612304882453739241,2025-06-08,7pcs Extended Flat Head,SATA Tools Official Store,¥27.64,1,¥27.64
-```
-
-## Troubleshooting
-
-**File not found error:**
-- Ensure `data/input.html` exists and is accessible
-- Check file path and permissions
-
-**No products extracted:**
-- Verify HTML file contains JSON data
-- Check if page was fully loaded when saving HTML
-- Ensure the HTML includes the complete purchase history
-
-**Encoding issues:**
-- The script handles multiple encodings (UTF-8, ISO-8859-1)
-- If issues persist, try saving HTML with UTF-8 encoding
-
-## Dependencies
-
-- `beautifulsoup4` - HTML parsing
-- `lxml` - XML/HTML processing  
-- `html5lib` - HTML5 parsing
-- `pandas` - Data manipulation
-- `python-dateutil` - Date handling
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add translations to the dictionary functions
-4. Test with your own Taobao HTML files
-5. Submit a pull request
-
-## License
-
-MIT License - Feel free to use and modify for personal or commercial projects.
+Viel Erfolg — wenn Du möchtest, kann ich die README noch weiter vereinfachen oder Beispielbefehle für andere Shells (cmd, bash) ergänzen.
+This repository has been reduced to a minimal example project that contains:
