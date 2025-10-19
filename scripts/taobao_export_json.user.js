@@ -19,9 +19,13 @@
 
     function toCsv(header, data, filename) {
         let rows = '\uFEFF' + header.join(',') + '\n';
+        const idIndex = header.indexOf('订单号');
+        const trackingIndex = header.indexOf('快递单号');
         for (let order of data) {
-            order[0] = '\t' + (order[0] || '');
-            order[7] = order[7] ? '\t' + order[7] : '';
+            // ensure row has same length as header
+            while (order.length < header.length) order.push('');
+            if (idIndex >= 0) order[idIndex] = '\t' + (order[idIndex] || '');
+            if (trackingIndex >= 0 && order[trackingIndex]) order[trackingIndex] = '\t' + order[trackingIndex];
             rows += order.map(v => (v===undefined||v===null)?'':('"'+String(v).replace(/"/g,'""')+'"')).join(',') + '\n';
         }
         const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
@@ -90,6 +94,45 @@
                 const actualFee = (order.payInfo && order.payInfo.actualFee) || '';
                 const sellerUrl = (order.seller && order.seller.shopUrl) || '';
 
+                // extract order date from multiple possible fields
+                let orderDate = '';
+                try {
+                    orderDate = (order.orderInfo && (order.orderInfo.createTime || order.orderInfo.createDate || order.orderInfo.gmtCreate)) || order.createTime || order.createDate || (order.payInfo && (order.payInfo.payTime || order.payInfo.createTime)) || '';
+                    if (orderDate) {
+                        // numeric timestamps
+                        if (/^\d{13}$/.test(String(orderDate))) {
+                            orderDate = new Date(Number(orderDate)).toISOString().slice(0,10);
+                        } else if (/^\d{10}$/.test(String(orderDate))) {
+                            orderDate = new Date(Number(orderDate) * 1000).toISOString().slice(0,10);
+                        } else if (String(orderDate).includes(' ')) {
+                            orderDate = String(orderDate).split(' ')[0];
+                        } else if (String(orderDate).includes('T')) {
+                            orderDate = String(orderDate).split('T')[0];
+                        }
+                    }
+                } catch (e) { console.debug('orderDate parse error', e); orderDate = '' }
+
+                // extract seller/store name from several possible fields
+                let sellerName = '';
+                try {
+                    if (order.seller) {
+                        sellerName = order.seller.shopName || order.seller.shopTitle || order.seller.storeName || order.seller.name || order.seller.nick || '';
+                    }
+                    // fallback: check first subOrder for seller info
+                    if (!sellerName && Array.isArray(order.subOrders) && order.subOrders.length) {
+                        const s0 = order.subOrders[0];
+                        if (s0 && s0.seller) {
+                            sellerName = s0.seller.shopName || s0.seller.name || s0.seller.nick || '';
+                        }
+                        // some payloads include shopName on subOrder
+                        sellerName = sellerName || s0.shopName || s0.shopTitle || '';
+                    }
+                    // final fallback: attempt to read from order.sellerName or order.shopName
+                    sellerName = sellerName || order.sellerName || order.shopName || '';
+                    // sanitize commas
+                    if (sellerName) sellerName = String(sellerName).replace(/,/g,'，');
+                } catch (e) { console.debug('sellerName parse error', e); sellerName = '' }
+
                 const titles = [];
                 const itemUrls = [];
                 if (Array.isArray(order.subOrders)) {
@@ -122,6 +165,8 @@
 
                 results.push([
                     orderId,
+                    orderDate,
+                    sellerName,
                     joinedTitles,
                     firstItemUrl,
                     '', // unit price (not present in this JSON example)
@@ -138,7 +183,7 @@
     }
 
     async function exportOrdersFromJson() {
-        const header = ["订单号","商品名称","商品链接","单价","数量","实付款","状态","快递单号"];
+        const header = ["订单号","下单日期","卖家","商品名称","商品链接","单价","数量","实付款","状态","快递单号"];
         const rows = await extractOrdersFromEmbeddedJson();
         if (!rows.length) { alert('Keine Bestellungen gefunden oder JSON nicht lesbar.'); return; }
         toCsv(header, rows, '淘宝订单导出_JSON');
