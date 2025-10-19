@@ -30,6 +30,24 @@ Dieses Repository ist auf ein kleines, praktisches Werkzeug reduziert:
 
 Ziel: einfacher Ablauf — Seite exportieren → CSV in `input_csv/` legen → übersetzen → finales CSV in `final_output/`.
 
+## Easy install (one command)
+
+Wenn Du das Repo gerade heruntergeladen hast und schnell loslegen willst, gibt es zwei kleine Helfer:
+
+- Windows / PowerShell (einfach ausführen im Repo-Root):
+
+```powershell
+.\scripts\setup_env.ps1
+```
+
+- macOS / Linux (bash):
+
+```bash
+./scripts/setup_env.sh
+```
+
+Beide Skripte erzeugen ein virtuelles Environment `.venv` und installieren die Abhängigkeiten aus `requirements.txt` (sofern vorhanden). Du kannst danach die venv aktivieren und wie gewohnt die Tools verwenden.
+
 ## Schnellstart (PowerShell)
 
 Voraussetzungen:
