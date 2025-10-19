@@ -6,6 +6,7 @@
 // @author       adapted
 // @match        https://buyertrade.taobao.com/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_download
 // @connect      buyertrade.taobao.com
 // @connect      wuliu.taobao.com
 // @connect      market.m.taobao.com
@@ -16,8 +17,30 @@
     'use strict';
 
     let orderList = [];
+    // Header translation map: Chinese -> English
+    const HEADER_MAP = {
+        '订单号': 'order_id',
+        '下单日期': 'order_date',
+        '卖家': 'seller',
+        '商品名称': 'title',
+        '商品链接': 'item_url',
+        '单价': 'unit_price',
+        '数量': 'quantity',
+        '实付款': 'paid',
+        '状态': 'status',
+        '快递单号': 'tracking_number',
+        '规格': 'spec'
+    };
+
+    // Config: default filename base (no extension) and whether to attempt GM_download
+    const CONFIG = {
+        defaultFilename: 'taobao_orders_export',
+        useGMDownload: true
+    };
 
     function toCsv(header, data, filename) {
+        // header: array of Chinese column names
+        // filename: base filename (without .csv)
         let rows = '\uFEFF' + header.join(',') + '\n';
         const idIndex = header.indexOf('订单号');
         const trackingIndex = header.indexOf('快递单号');
@@ -29,10 +52,31 @@
             rows += order.map(v => (v===undefined||v===null)?'':('"'+String(v).replace(/"/g,'""')+'"')).join(',') + '\n';
         }
         const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
+        // create download name prompt
+        let outName = filename || CONFIG.defaultFilename;
+        try {
+            const user = prompt('Dateiname für Export (ohne Erweiterung):', outName);
+            if (user && user.trim()) outName = user.trim();
+        } catch (e) { /* ignore */ }
+
+        const fullName = outName + '.csv';
+        // Prefer GM_download if available and configured
+        if (typeof GM_download === 'function' && CONFIG.useGMDownload) {
+            try {
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const dataUrl = reader.result;
+                    GM_download({url: dataUrl, name: fullName, saveAs: true});
+                };
+                reader.readAsDataURL(blob);
+                return;
+            } catch (e) { console.debug('GM_download failed', e); }
+        }
+
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = filename + '.csv';
+        link.download = fullName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -251,7 +295,20 @@
         const header = ["订单号","下单日期","卖家","商品名称","商品链接","单价","数量","实付款","状态","快递单号","规格"];
         const rows = await extractOrdersFromEmbeddedJson();
         if (!rows.length) { alert('Keine Bestellungen gefunden oder JSON nicht lesbar.'); return; }
-        toCsv(header, rows, '淘宝订单导出_JSON');
+        // ask user for filename base
+        let baseName = CONFIG.defaultFilename;
+        try { const n = prompt('Dateiname für Export (ohne Erweiterung):', baseName); if (n && n.trim()) baseName = n.trim(); } catch(e){}
+        toCsv(header, rows, baseName);
+
+        // offer an English-header version
+        try {
+            const makeEn = confirm('Auch eine Version mit englischen Spaltennamen erzeugen? (OK = Ja)');
+            if (makeEn) {
+                const enHeader = header.map(h => HEADER_MAP[h] || h);
+                // build CSV rows with same data but enHeader as header
+                toCsv(enHeader, rows, baseName + '_en_headers');
+            }
+        } catch(e) { /* ignore */ }
     }
 
     function addJsonExportButton(){
