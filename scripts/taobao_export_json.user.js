@@ -153,6 +153,8 @@
 
                 // If subOrders exist, list each subOrder as its own CSV row
                 if (Array.isArray(order.subOrders) && order.subOrders.length) {
+                    // if order has multiple items, insert an empty row before to visually separate groups
+                    if (order.subOrders.length > 1) results.push([]);
                     for (const so of order.subOrders) {
                         try {
                             const it = so.itemInfo || {};
@@ -160,9 +162,33 @@
                             // spec may be in skuTitle, skuPropertiesName, or a specific field
                             const spec = it.skuTitle || it.skuPropertiesName || it.spec || so.skuTitle || '';
                             const itemUrl = (it.itemUrl || so.itemUrl || '').replace(/^\/\//,'https://');
-                            // unit price may be in so.price, it.price, so.skuPrice
-                            const unitPrice = so.price || it.price || so.skuPrice || '';
-                            const quantity = so.quantity || it.quantity || so.count || '';
+                            // unit price: try several candidate fields, fall back to total/quantity when possible
+                            let unitPrice = '';
+                            const qty = Number(so.quantity || it.quantity || so.count || 0) || 0;
+                            const tryNum = v => { if (v===undefined||v===null) return null; const s=String(v).replace(/[¥,\s]/g,''); const n=Number(s); return isFinite(n)?n:null };
+                            const candidates = [so.price, so.unitPrice, so.skuPrice, so.payPrice, so.totalFee, so.totalPayment, it.price, it.promotionPrice, it.skuPrice];
+                            let found = null;
+                            for (const c of candidates) {
+                                const n = tryNum(c);
+                                if (n!==null) { found = n; break; }
+                            }
+                            if (found !== null) {
+                                // if candidate looks like a total (and qty>1) and it's from total-like fields, try to divide
+                                // Heuristic: if field name contains 'total' and qty>0
+                                const totalLike = (String(so.totalFee||so.totalPayment||'') !== '');
+                                if (totalLike && qty>0 && (tryNum(so.totalFee) || tryNum(so.totalPayment))) {
+                                    const total = tryNum(so.totalFee) || tryNum(so.totalPayment) || found;
+                                    unitPrice = (total && qty>0) ? (total/qty).toFixed(2) : String(found);
+                                } else {
+                                    unitPrice = String(found);
+                                }
+                            } else {
+                                // as last resort, if there is a numeric total on so and qty, compute
+                                const totalN = tryNum(so.totalFee) || tryNum(so.totalPayment) || null;
+                                if (totalN !== null && qty>0) unitPrice = (totalN/qty).toFixed(2);
+                                else unitPrice = '';
+                            }
+                            const quantity = qty || '';
 
                             results.push([
                                 orderId,
@@ -181,6 +207,8 @@
                             console.debug('suborder parse error', e);
                         }
                     }
+                    // after group, add an empty row to separate groups visually
+                    if (order.subOrders.length > 1) results.push([]);
                     // continue to next order (we already pushed suborders)
                     continue;
                 }
