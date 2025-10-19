@@ -133,20 +133,8 @@
                     if (sellerName) sellerName = String(sellerName).replace(/,/g,'，');
                 } catch (e) { console.debug('sellerName parse error', e); sellerName = '' }
 
-                const titles = [];
-                const itemUrls = [];
-                if (Array.isArray(order.subOrders)) {
-                    for (const so of order.subOrders) {
-                        const it = so.itemInfo || {};
-                        if (it.title) titles.push(it.title.replace(/,/g,'，'));
-                        if (it.itemUrl) itemUrls.push(it.itemUrl.replace(/^\/\//,'https://'));
-                    }
-                }
-                const joinedTitles = titles.join('||');
-                const firstItemUrl = itemUrls.length ? itemUrls[0] : '';
-
-                // Try to fetch tracking via viewLogistic dataUrl if present
-                let tracking = '0';
+                // Try to fetch tracking via viewLogistic dataUrl if present (do this early so subOrders can include it)
+                let tracking = '';
                 try {
                     const ops = order.statusInfo && order.statusInfo.operations;
                     if (Array.isArray(ops)) {
@@ -163,6 +151,54 @@
                     }
                 } catch (err) { console.debug('tracking fetch failed', err); }
 
+                // If subOrders exist, list each subOrder as its own CSV row
+                if (Array.isArray(order.subOrders) && order.subOrders.length) {
+                    for (const so of order.subOrders) {
+                        try {
+                            const it = so.itemInfo || {};
+                            const title = it.title ? String(it.title).replace(/,/g,'，') : (so.title || '');
+                            // spec may be in skuTitle, skuPropertiesName, or a specific field
+                            const spec = it.skuTitle || it.skuPropertiesName || it.spec || so.skuTitle || '';
+                            const itemUrl = (it.itemUrl || so.itemUrl || '').replace(/^\/\//,'https://');
+                            // unit price may be in so.price, it.price, so.skuPrice
+                            const unitPrice = so.price || it.price || so.skuPrice || '';
+                            const quantity = so.quantity || it.quantity || so.count || '';
+
+                            results.push([
+                                orderId,
+                                orderDate,
+                                sellerName,
+                                title,
+                                itemUrl,
+                                unitPrice,
+                                quantity,
+                                actualFee,
+                                status,
+                                tracking,
+                                spec
+                            ]);
+                        } catch (e) {
+                            console.debug('suborder parse error', e);
+                        }
+                    }
+                    // continue to next order (we already pushed suborders)
+                    continue;
+                }
+
+                // fallback when no subOrders: create a single row from order-level info
+                const titles = [];
+                const itemUrls = [];
+                if (Array.isArray(order.items)) {
+                    for (const it of order.items) {
+                        if (it && it.title) titles.push(it.title.replace(/,/g,'，'));
+                        if (it && it.itemUrl) itemUrls.push(it.itemUrl.replace(/^\/\//,'https://'));
+                    }
+                }
+                const joinedTitles = titles.join('||');
+                const firstItemUrl = itemUrls.length ? itemUrls[0] : '';
+
+                // (tracking was retrieved earlier)
+
                 results.push([
                     orderId,
                     orderDate,
@@ -173,7 +209,8 @@
                     '', // quantity (not present)
                     actualFee,
                     status,
-                    tracking
+                    tracking,
+                    '' // spec empty
                 ]);
             } catch (e) {
                 console.error('order parse error', e);
@@ -183,7 +220,7 @@
     }
 
     async function exportOrdersFromJson() {
-        const header = ["订单号","下单日期","卖家","商品名称","商品链接","单价","数量","实付款","状态","快递单号"];
+        const header = ["订单号","下单日期","卖家","商品名称","商品链接","单价","数量","实付款","状态","快递单号","规格"];
         const rows = await extractOrdersFromEmbeddedJson();
         if (!rows.length) { alert('Keine Bestellungen gefunden oder JSON nicht lesbar.'); return; }
         toCsv(header, rows, '淘宝订单导出_JSON');
